@@ -8,7 +8,12 @@ let _container;
 function getCosmosEnv() {
     const endpoint = process.env.COSMOS_ENDPOINT ?? process.env.CONFIGURATION__AZURECOSMOSDB__ENDPOINT;
     const key = process.env.COSMOS_KEY;
-    const connectionString = process.env.COSMOS_CONNECTION_STRING;
+    const connectionString =
+        process.env.COSMOS_CONNECTION_STRING ??
+        // App Service "Connection strings" (DocumentDB) surface as DOCDBCONNSTR_<name>.
+        // If you set a Connection string named "COSMOS_CONNECTION_STRING" or "COSMOS", these will work.
+        process.env.DOCDBCONNSTR_COSMOS_CONNECTION_STRING ??
+        process.env.DOCDBCONNSTR_COSMOS;
 
     const databaseName = process.env.COSMOS_DATABASE_ID ?? process.env.CONFIGURATION__AZURECOSMOSDB__DATABASENAME ?? 'appdb';
     const containerName = process.env.COSMOS_CONTAINER_ID ?? process.env.CONFIGURATION__AZURECOSMOSDB__CONTAINERNAME ?? 'items';

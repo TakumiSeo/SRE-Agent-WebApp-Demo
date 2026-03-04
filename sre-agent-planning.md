@@ -189,7 +189,8 @@ app.Run();
 
 接続文字列で渡したい場合:
 
-- `COSMOS_CONNECTION_STRING` に入れるのが分かりやすい（App Service の “Connection strings” 機能を使う場合でも、最終的にこの名前で環境変数として見えるように揃えると混乱が減ります）
+- App settings に `COSMOS_CONNECTION_STRING` を入れるのが分かりやすい
+- App Service の “Connection strings” を使う場合は、名前を `COSMOS_CONNECTION_STRING`（または `COSMOS`）にすると `DOCDBCONNSTR_...` 経由でも自動的に読めます
 
 ## 6) App Service (Web App) へのデプロイ（GitHub Actions）
 
