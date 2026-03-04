@@ -190,3 +190,11 @@ app.Run();
 接続文字列で渡したい場合:
 
 - `COSMOS_CONNECTION_STRING` に入れるのが分かりやすい（App Service の “Connection strings” 機能を使う場合でも、最終的にこの名前で環境変数として見えるように揃えると混乱が減ります）
+
+## 6) App Service (Web App) へのデプロイ（GitHub Actions）
+
+`azure/login`（OIDC/サービスプリンシパル）が未設定だと「No subscriptions found」になりやすいので、デモでは **Publish Profile** を使うのが最短です。
+
+- Workflow: [.github/workflows/main_app-sre-demo.yml](.github/workflows/main_app-sre-demo.yml)
+- GitHub Secret: `AZURE_WEBAPP_PUBLISH_PROFILE`
+  - Azure Portal → App Service → 「発行プロファイルの取得」からダウンロードした XML を、そのまま Secret の値に貼り付けます
