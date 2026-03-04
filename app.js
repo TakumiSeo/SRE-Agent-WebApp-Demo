@@ -6,7 +6,7 @@ import { Server } from 'socket.io';
 import favicon from 'serve-favicon';
 import rateLimit from 'express-rate-limit';
 
-import { start } from './cosmos.js'
+import { start, getContainer, getCosmosClientInfo, runBurst } from './cosmos.js'
 
 import 'dotenv/config'
 
@@ -29,6 +29,44 @@ const limiter = rateLimit({
 
 app.get('/', limiter, (_, res) => {
   res.sendFile(join(__dirname, 'static', 'index.html'));
+});
+
+app.get('/healthz', async (_, res) => {
+  try {
+    const container = await getContainer();
+    const response = await container.read();
+    const { endpoint, databaseName, containerName } = getCosmosClientInfo();
+    res.status(200).json({
+      ok: true,
+      endpoint,
+      databaseName,
+      containerName,
+      statusCode: response.statusCode,
+      requestCharge: response.requestCharge,
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error?.message ?? String(error),
+    });
+  }
+});
+
+app.get('/burst', async (req, res) => {
+  const mode = req.query.mode;
+  const items = req.query.items;
+  const pk = req.query.pk;
+
+  try {
+    const result = await runBurst({ mode, items, pk });
+    const status = result.throttled429 > 0 ? 429 : 200;
+    res.status(status).json({ ok: true, ...result });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error?.message ?? String(error),
+    });
+  }
 });
 
 app.use(
