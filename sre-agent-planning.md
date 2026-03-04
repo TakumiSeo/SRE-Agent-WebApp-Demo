@@ -18,6 +18,8 @@
 - `GET /burst?mode=hot|spread&items=N&pk=...`
   - 1 HTTP リクエスト内で `items` 回、**upsert + read** を連続実行して重くする経路
   - 429 を見えやすくするため、Cosmos SDK の 429 自動リトライは **OFF** にする（Node: `retryOptions.maxRetryAttemptsOnThrottledRequests = 0` / .NET: `MaxRetryAttemptsOnRateLimitedRequests = 0`）
+  - 注意: サーバ側で `items` の上限を持つ（暴走防止）
+    - Node このリポ: `BURST_MAX_ITEMS`（既定 5000、最大 20000）
 
 ## 2) Node.js 実装（このリポの貼り付け先）
 
@@ -97,7 +99,11 @@ app.MapGet("/healthz", async () =>
 app.MapGet("/burst", async (HttpRequest req) =>
 {
     string mode = (req.Query["mode"].ToString() ?? "hot").ToLowerInvariant();
-    int items = int.TryParse(req.Query["items"], out var n) ? Math.Clamp(n, 1, 1000) : 25;
+  int maxItems = int.TryParse(Environment.GetEnvironmentVariable("BURST_MAX_ITEMS"), out var m)
+    ? Math.Clamp(m, 1, 20000)
+    : 5000;
+  int itemsParam = int.TryParse(req.Query["items"], out var n) ? n : 25;
+  int items = Math.Clamp(itemsParam, 1, maxItems);
     string pkBase = string.IsNullOrWhiteSpace(req.Query["pk"]) ? "hot-1" : req.Query["pk"].ToString();
 
     var startedAt = DateTimeOffset.UtcNow;
@@ -151,7 +157,10 @@ app.MapGet("/burst", async (HttpRequest req) =>
     {
         ok = true,
         mode,
-        itemsRequested = items,
+      itemsRequested = itemsParam,
+      itemsEffective = items,
+      itemsMax = maxItems,
+      itemsCapped = itemsParam > items,
         pk = pkBase,
         okCount = ok,
         throttled429,

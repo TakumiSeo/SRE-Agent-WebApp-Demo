@@ -67,11 +67,19 @@ function clampInt(value, { min, max, fallback }) {
     return Math.max(min, Math.min(max, parsed));
 }
 
+function getBurstMaxItems() {
+    // Safety guardrail: allow raising/lowering without code changes.
+    // Default is higher than 1000 so demos can push harder.
+    return clampInt(process.env.BURST_MAX_ITEMS, { min: 1, max: 20_000, fallback: 5_000 });
+}
+
 export async function runBurst({ mode, items, pk }) {
     const container = await getContainer();
 
     const normalizedMode = (mode ?? 'hot').toLowerCase();
-    const operations = clampInt(items, { min: 1, max: 1000, fallback: 25 });
+    const requestedItems = Number.parseInt(String(items ?? ''), 10);
+    const maxItems = getBurstMaxItems();
+    const operations = clampInt(items, { min: 1, max: maxItems, fallback: 25 });
     const basePk = (pk && String(pk).length > 0) ? String(pk) : 'hot-1';
 
     const startedAt = Date.now();
@@ -79,7 +87,10 @@ export async function runBurst({ mode, items, pk }) {
     const maxTotalElapsedMs = 180_000;
     const results = {
         mode: normalizedMode,
-        itemsRequested: operations,
+        itemsRequested: Number.isNaN(requestedItems) ? operations : requestedItems,
+        itemsEffective: operations,
+        itemsMax: maxItems,
+        itemsCapped: !Number.isNaN(requestedItems) && requestedItems > operations,
         pk: basePk,
         ok: 0,
         throttled429: 0,
@@ -114,14 +125,22 @@ export async function runBurst({ mode, items, pk }) {
         try {
             const upsertAbort = new AbortController();
             const upsertTimer = setTimeout(() => upsertAbort.abort(), perOperationTimeoutMs);
-            const upsertResponse = await container.items.upsert(item, { abortSignal: upsertAbort.signal });
-            clearTimeout(upsertTimer);
+            let upsertResponse;
+            try {
+                upsertResponse = await container.items.upsert(item, { abortSignal: upsertAbort.signal });
+            } finally {
+                clearTimeout(upsertTimer);
+            }
             results.totalRequestCharge += upsertResponse.requestCharge ?? 0;
 
             const readAbort = new AbortController();
             const readTimer = setTimeout(() => readAbort.abort(), perOperationTimeoutMs);
-            const readResponse = await container.item(id, partitionKeyValue).read({ abortSignal: readAbort.signal });
-            clearTimeout(readTimer);
+            let readResponse;
+            try {
+                readResponse = await container.item(id, partitionKeyValue).read({ abortSignal: readAbort.signal });
+            } finally {
+                clearTimeout(readTimer);
+            }
             results.totalRequestCharge += readResponse.requestCharge ?? 0;
 
             results.ok++;
