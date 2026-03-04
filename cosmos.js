@@ -75,6 +75,8 @@ export async function runBurst({ mode, items, pk }) {
     const basePk = (pk && String(pk).length > 0) ? String(pk) : 'hot-1';
 
     const startedAt = Date.now();
+    const perOperationTimeoutMs = 15_000;
+    const maxTotalElapsedMs = 180_000;
     const results = {
         mode: normalizedMode,
         itemsRequested: operations,
@@ -87,6 +89,10 @@ export async function runBurst({ mode, items, pk }) {
     };
 
     for (let i = 0; i < operations; i++) {
+        if (Date.now() - startedAt > maxTotalElapsedMs) {
+            break;
+        }
+
         const partitionKeyValue = normalizedMode === 'spread'
             ? `${basePk}-${i}-${randomUUID().slice(0, 8)}`
             : basePk;
@@ -106,10 +112,16 @@ export async function runBurst({ mode, items, pk }) {
         };
 
         try {
-            const upsertResponse = await container.items.upsert(item);
+            const upsertAbort = new AbortController();
+            const upsertTimer = setTimeout(() => upsertAbort.abort(), perOperationTimeoutMs);
+            const upsertResponse = await container.items.upsert(item, { abortSignal: upsertAbort.signal });
+            clearTimeout(upsertTimer);
             results.totalRequestCharge += upsertResponse.requestCharge ?? 0;
 
-            const readResponse = await container.item(id, partitionKeyValue).read();
+            const readAbort = new AbortController();
+            const readTimer = setTimeout(() => readAbort.abort(), perOperationTimeoutMs);
+            const readResponse = await container.item(id, partitionKeyValue).read({ abortSignal: readAbort.signal });
+            clearTimeout(readTimer);
             results.totalRequestCharge += readResponse.requestCharge ?? 0;
 
             results.ok++;
@@ -118,6 +130,8 @@ export async function runBurst({ mode, items, pk }) {
             if (code === 429) {
                 results.throttled429++;
                 results.lastRetryAfterMs = error?.retryAfterInMs ?? error?.retryAfterMilliseconds;
+            } else if (error?.name === 'AbortError') {
+                results.otherErrors++;
             } else {
                 results.otherErrors++;
             }
