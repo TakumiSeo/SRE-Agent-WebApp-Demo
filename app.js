@@ -70,9 +70,10 @@ app.get('/burst', async (req, res) => {
   const mode = req.query.mode;
   const items = req.query.items;
   const pk = req.query.pk;
+  const concurrency = req.query.concurrency;
 
   try {
-    const result = await runBurst({ mode, items, pk });
+    const result = await runBurst({ mode, items, pk, concurrency });
     const status = result.throttled429 > 0 ? 429 : 200;
     res.status(status).json({ ok: true, ...result });
   } catch (error) {

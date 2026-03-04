@@ -73,10 +73,12 @@ function getBurstMaxItems() {
     return clampInt(process.env.BURST_MAX_ITEMS, { min: 1, max: 20_000, fallback: 5_000 });
 }
 
-export async function runBurst({ mode, items, pk }) {
+export async function runBurst({ mode, items, pk, concurrency }) {
     const container = await getContainer();
 
     const normalizedMode = (mode ?? 'hot').toLowerCase();
+    const concurrencyFallback = clampInt(process.env.BURST_CONCURRENCY ?? undefined, { min: 1, max: 50, fallback: 1 });
+    const normalizedConcurrency = clampInt(concurrency, { min: 1, max: 50, fallback: concurrencyFallback });
     const requestedItems = Number.parseInt(String(items ?? ''), 10);
     const maxItems = getBurstMaxItems();
     const operations = clampInt(items, { min: 1, max: maxItems, fallback: 25 });
@@ -91,6 +93,7 @@ export async function runBurst({ mode, items, pk }) {
         itemsEffective: operations,
         itemsMax: maxItems,
         itemsCapped: !Number.isNaN(requestedItems) && requestedItems > operations,
+        concurrency: normalizedConcurrency,
         pk: basePk,
         ok: 0,
         throttled429: 0,
@@ -99,11 +102,7 @@ export async function runBurst({ mode, items, pk }) {
         lastRetryAfterMs: undefined,
     };
 
-    for (let i = 0; i < operations; i++) {
-        if (Date.now() - startedAt > maxTotalElapsedMs) {
-            break;
-        }
-
+    async function runOne(i) {
         const partitionKeyValue = normalizedMode === 'spread'
             ? `${basePk}-${i}-${randomUUID().slice(0, 8)}`
             : basePk;
@@ -149,11 +148,29 @@ export async function runBurst({ mode, items, pk }) {
             if (code === 429) {
                 results.throttled429++;
                 results.lastRetryAfterMs = error?.retryAfterInMs ?? error?.retryAfterMilliseconds;
-            } else if (error?.name === 'AbortError') {
-                results.otherErrors++;
             } else {
                 results.otherErrors++;
             }
+        }
+    }
+
+    // Drive a bounded number of async operations in flight.
+    const inFlight = new Set();
+    let nextIndex = 0;
+    while ((nextIndex < operations) || (inFlight.size > 0)) {
+        if (Date.now() - startedAt > maxTotalElapsedMs) {
+            break;
+        }
+
+        while (nextIndex < operations && inFlight.size < normalizedConcurrency) {
+            const i = nextIndex++;
+            let p;
+            p = runOne(i).finally(() => inFlight.delete(p));
+            inFlight.add(p);
+        }
+
+        if (inFlight.size > 0) {
+            await Promise.race(inFlight);
         }
     }
 
