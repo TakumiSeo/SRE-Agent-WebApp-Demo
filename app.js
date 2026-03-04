@@ -10,6 +10,14 @@ import { start, getContainer, getCosmosClientInfo, runBurst } from './cosmos.js'
 
 import 'dotenv/config'
 
+process.on('unhandledRejection', (reason) => {
+  console.error('UnhandledRejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('UncaughtException:', error);
+});
+
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
@@ -96,6 +104,6 @@ io.on('disconnect', (_, reason) => {
 });
 
 const port = process.env.PORT || 3000;
-server.listen(port, () => {
-  console.log(`Server running: \\:${port}`);
+server.listen(port, '0.0.0.0', () => {
+  console.log(`Server running on 0.0.0.0:${port}`);
 });
