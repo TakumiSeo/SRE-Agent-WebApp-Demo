@@ -130,11 +130,14 @@ export async function runBurst({ mode, items, pk }) {
 
 export async function start(emit) {
     // <create_client>
-    const { endpoint } = getCosmosClientInfo();
+    const { endpoint, databaseName, containerName } = getCosmosClientInfo();
     console.log(`ENDPOINT: ${endpoint}`);
     const container = await getContainer();
     // </create_client>
     emit('Current Status:\tStarting...');
+
+    emit(`Cosmos endpoint:\t${endpoint ?? '(not set)'}`);
+    emit(`Cosmos db/container:\t${databaseName}/${containerName}`);
 
     emit(`Get container:\t${container.id}`);
 

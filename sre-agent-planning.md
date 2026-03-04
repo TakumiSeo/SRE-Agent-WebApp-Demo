@@ -187,6 +187,48 @@ app.Run();
 - `COSMOS_DATABASE_ID`
 - `COSMOS_CONTAINER_ID`
 
+### 5.1 Local Authorization が無効な場合（AAD 必須）
+
+Cosmos 側で **Local Authorization (Keys)** が無効だと、`COSMOS_KEY` / 接続文字列では 403 になり
+`Local Authorization is disabled. Use an AAD token...` が返ります。
+
+この場合は **App Service の Managed Identity + Cosmos DB RBAC** で接続してください。
+
+- App Service 側
+  - System-assigned managed identity を ON
+  - App settings は `COSMOS_ENDPOINT` / `COSMOS_DATABASE_ID` / `COSMOS_CONTAINER_ID` を設定
+  - `COSMOS_KEY` は **設定しない**（または削除）
+- Cosmos DB 側
+  - 上記 managed identity に、**データプレーン用のロール**を割り当て
+    - 例: `Cosmos DB Built-in Data Contributor`（読み書き） / `Cosmos DB Built-in Data Reader`（読み取り）
+  - 割り当てスコープは Cosmos DB アカウント（または database/container）
+  - 注意: 「Cosmos DB アカウントの閲覧者ロール」「Cosmos DB 演算子」など *管理プレーン(IAM)* のロールだけでは、SDK から item の read/write はできません
+  - ポータルで **データプレーンRBAC（sql role assignment）** の管理 UI が表示されないことがあります。その場合は Azure CLI で割り当てるのが確実です。
+
+例（Azure CLI）:
+
+```bash
+# 1) App Service の managed identity (principalId) を取得
+az webapp identity show -g <rg> -n <appServiceName> --query principalId -o tsv
+
+# 2) Data Contributor の roleDefinitionId を取得
+az cosmosdb sql role definition list -g <rg> -a <cosmosAccountName> \
+  --query "[?roleName=='Cosmos DB Built-in Data Contributor'].id | [0]" -o tsv
+
+# 3) ロール割り当て作成（アカウント全体に付与するなら scope は '/'）
+az cosmosdb sql role assignment create -g <rg> -a <cosmosAccountName> \
+  --scope "/" \
+  --principal-id <principalId> \
+  --role-definition-id <roleDefinitionId>
+
+# 4) 確認
+az cosmosdb sql role assignment list -g <rg> -a <cosmosAccountName>
+```
+
+このリポの Node 実装は `COSMOS_KEY` が無い場合、`DefaultAzureCredential`（Managed Identity）で接続します。
+
+az cosmosdb sql role assignment create -g <rg> -a <cosmoddb>  --scope "/" --principal-id  <app principle id> --role-definition-id /subscriptions/<subscription id>/resourceGroups/<rg>/providers/Microsoft.DocumentDB/databaseAccounts/cdbsreagentdemo/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002
+
 接続文字列で渡したい場合:
 
 - App settings に `COSMOS_CONNECTION_STRING` を入れるのが分かりやすい
