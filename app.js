@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { existsSync } from 'node:fs';
 import { Server } from 'socket.io';
 import favicon from 'serve-favicon';
 import rateLimit from 'express-rate-limit';
@@ -36,7 +37,12 @@ const limiter = rateLimit({
 });
 
 app.get('/', limiter, (_, res) => {
-  res.sendFile(join(__dirname, 'static', 'index.html'));
+  const indexPath = join(__dirname, 'static', 'index.html');
+  if (existsSync(indexPath)) {
+    res.sendFile(indexPath);
+    return;
+  }
+  res.status(200).type('text/plain').send('OK');
 });
 
 app.get('/healthz', async (_, res) => {
@@ -77,9 +83,12 @@ app.get('/burst', async (req, res) => {
   }
 });
 
-app.use(
-  favicon(join(__dirname, 'static', 'favicon.ico'))
-);
+const faviconPath = join(__dirname, 'static', 'favicon.ico');
+if (existsSync(faviconPath)) {
+  app.use(favicon(faviconPath));
+} else {
+  console.warn(`favicon.ico not found at ${faviconPath}; skipping serve-favicon middleware`);
+}
 
 app.use(express.static('static'));
 
